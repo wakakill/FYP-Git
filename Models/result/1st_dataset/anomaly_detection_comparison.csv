@@ -1,0 +1,4 @@
+Model,Accuracy,Anomaly_Precision,Anomaly_Recall,Anomaly_F1,ROC_AUC,TN,FP,FN,TP,Inference_Time_ms
+Isolation Forest,1.0,1.0,1.0,1.0,1.0,2507,0,0,121,65.1798
+Local Outlier Factor,0.8946,0.0517,0.0744,0.061,0.4199,2342,165,112,9,220.1893
+Autoencoder (MLP),0.9418,0.4416,1.0,0.6127,1.0,2354,153,0,121,0.4729

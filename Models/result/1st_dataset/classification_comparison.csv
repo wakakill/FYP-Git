@@ -1,0 +1,4 @@
+Model,Accuracy,Macro_Precision,Macro_Recall,Macro_F1,Weighted_F1,Inference_Time_ms
+XGBoost,1.0,1.0,1.0,1.0,1.0,3.0775
+Random Forest,1.0,1.0,1.0,1.0,1.0,22.4976
+SVM (RBF),1.0,1.0,1.0,1.0,1.0,7.2425

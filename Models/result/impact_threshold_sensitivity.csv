@@ -1,0 +1,4 @@
+Scenario,Plant_High_Cutoff,Plant_Medium_Cutoff,System_High_Drop_%,System_Medium_Drop_%,High_Records,Medium_Records,Low_Records,No Impact_Records,System_Severity_Changed,Plant_Levels_Changed
+-15%,15.3,6.8,63.75,21.25,47,70,9,0,39,45
+Baseline,18.0,8.0,75.0,25.0,21,83,22,0,0,0
++15%,20.7,9.2,86.25,28.75,21,70,35,0,13,33

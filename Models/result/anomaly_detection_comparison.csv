@@ -1,0 +1,7 @@
+Model,Accuracy,Anomaly_Precision,Anomaly_Recall,Anomaly_F1,ROC_AUC,TN,FP,FN,TP,Events_Detected,Total_Events,False_Alarm_Hours_Per_Day,Inference_Time_ms
+Isolation Forest,0.9829,0.7639,0.9091,0.8302,0.9968,2473,34,11,110,20,20,0.3105,67.9202
+Local Outlier Factor,0.8862,0.011,0.0165,0.0132,0.2774,2327,180,119,2,2,20,1.6438,211.0945
+Autoencoder (MLP),0.9186,0.3465,0.8678,0.4953,0.9589,2309,198,16,105,20,20,1.8082,0.4705
+Isolation Forest + 2h rule,0.9947,0.9735,0.9091,0.9402,0.9968,2504,3,11,110,20,20,0.0274,67.9667
+Local Outlier Factor + 2h rule,0.9471,0.0,0.0,0.0,0.2774,2489,18,121,0,0,20,0.1644,211.1372
+Autoencoder (MLP) + 2h rule,0.9844,0.8175,0.8512,0.834,0.9589,2484,23,18,103,19,20,0.21,0.519
