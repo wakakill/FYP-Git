@@ -1,0 +1,34 @@
+# Files that are generated automatically or are specific to one computer.
+# Not ignored on purpose: dataset/ and Models/result/ (the dashboard needs these files to run)
+# and .streamlit/config.toml (the dashboard theme).
+
+
+# Python cache (recreated automatically whenever the code runs)
+__pycache__/
+*.py[cod]
+
+# Virtual environment (recreate with: pip install -r requirements.txt)
+.venv/
+venv/
+env/
+
+# Jupyter autosaves
+.ipynb_checkpoints/
+
+# Editor settings (personal to each computer)
+.vscode/
+.idea/
+
+# Streamlit secrets (never commit passwords or keys)
+.streamlit/secrets.toml
+
+# Operating-system files
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Temporary Office files (created while a Word / Excel / PowerPoint file is open)
+~$*
+
+# Logs
+*.log

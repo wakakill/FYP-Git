@@ -1,226 +1,202 @@
-# FYP I REPORT DRAFT
-# Title:
-# AI-Assisted Gas Supply Chain Impact Monitoring and Analysis System
+<p align="center">
+  <img src="Picture/aegis-logo-light.png" alt="AEGIS: AI-Enhanced Gas Supply Chain Impact & Disruption Assessment System" width="520">
+</p>
+
+# AEGIS: AI-Assisted Gas Supply Chain Impact Monitoring and Analysis System
+
+**AEGIS** (AI-Enhanced Gas Supply Chain Impact & Disruption Assessment System) is a Final Year Project that monitors a
+natural-gas supply chain from the gas field to three downstream plants. It finds abnormal operating conditions, identifies
+what kind of disruption caused them, estimates how badly each downstream plant is affected, and explains every decision.
+The results are presented in an interactive Streamlit dashboard for historical analysis and decision support.
+
+> The system is an **offline, advisory** tool. It analyses historical hourly data and suggests monitoring or escalation
+> steps; it never controls equipment. All data is **synthetic**, because real industrial data is confidential.
+
+The full FYP I report draft is in [FYP_Report_Draft.md](FYP_Report_Draft.md).
 
 ---
 
-# CHAPTER 1: INTRODUCTION
+## Objectives
 
-## 1.1 Background of Study
-
-Natural gas is one of the primary energy resources supporting electricity generation, industrial manufacturing, and economic development worldwide. The gas supply chain consists of interconnected upstream, midstream, and downstream operations. Upstream operations involve gas production and extraction, midstream operations are responsible for gas transportation and processing, while downstream facilities such as liquefied natural gas (LNG) plants, power plants, and petrochemical plants utilize the processed gas for various industrial applications.
-
-Due to the highly interconnected nature of gas supply chain operations, disruptions occurring at one operational stage may propagate throughout the supply chain and significantly affect downstream facilities. Examples of such disruptions include gas flow reduction, equipment malfunction, compressor failures, and plant underperformance. These disruptions can lead to reduced production efficiency, financial losses, and compromised energy security if not detected and mitigated promptly.
-
-Current industrial monitoring systems are typically designed to monitor individual facilities independently and often rely on conventional threshold-based alarms. Such approaches may not effectively capture complex abnormal operational patterns arising from interactions among multiple process variables across the entire gas supply chain.
-
-Recent advancements in Artificial Intelligence (AI) and Machine Learning (ML) have demonstrated significant potential in industrial monitoring applications. AI-based techniques can automatically detect abnormal operating conditions, classify disruption events, and provide valuable insights to support operational decision-making.
-
-Therefore, this research proposes an AI-Assisted Gas Supply Chain Impact Monitoring and Analysis System that integrates operational data across upstream, midstream, and downstream facilities to enable intelligent anomaly detection, disruption analysis, and impact assessment for enhanced operational awareness.
+1. Build an integrated monitoring framework by combining upstream, midstream and downstream data into one dataset.
+2. Develop an AI-based anomaly detection model that identifies abnormal operating conditions across the supply chain.
+3. Assess the impact of detected disruptions on downstream facilities and present the insights in an interactive dashboard.
 
 ---
 
-## 1.2 Problem Statement
+## The supply chain being monitored
 
-The gas supply chain consists of highly interconnected operational facilities where disruptions occurring in upstream or midstream operations may propagate and adversely affect downstream facilities. However, existing monitoring systems are often implemented independently at each operational stage, resulting in limited visibility of supply chain-wide disruptions and delayed response to abnormal situations.
+```
+  Upstream            Midstream                 Downstream plants (share of pipeline gas)
+  gas field   ──►   pipeline + compressor   ──►   LNG plant            50%
+  (pressure,         (pipeline flow,              COGEN / power plant  30%
+   flow)              compressor load)            PCG petrochemical    20%
+```
 
-Furthermore, current monitoring approaches primarily depend on conventional threshold-based alarm systems that may fail to detect complex abnormal operational patterns involving multiple interacting process variables. Consequently, subtle disruptions and operational anomalies may remain undetected until significant impacts occur.
+Five disruption types are simulated, each with a physical cause:
 
-In addition, there is a lack of intelligent monitoring frameworks capable of automatically analyzing the potential impact of disruptions on downstream facilities and providing operational insights to support decision-making.
+| Disruption | Where | What happens |
+|---|---|---|
+| Low Pressure | Upstream | Field pressure falls, so less gas enters the pipeline (supply drops by about half) |
+| Compressor Trip | Midstream | The compressor stops, so pipeline flow collapses to almost zero |
+| LNG / COGEN / PCG Underperformance | One downstream plant | That plant's efficiency falls while its gas supply stays normal |
 
-Therefore, an integrated AI-assisted monitoring system is required to continuously monitor gas supply chain operations, detect abnormal operating conditions, analyze disruption impacts, and improve operational awareness across the entire supply chain.
-
----
-
-## 1.3 Research Objectives
-
-The objectives of this research are:
-
-1. To develop an integrated gas supply chain monitoring framework by consolidating upstream, midstream, and downstream operational data into a unified dataset.
-
-2. To develop an AI-based anomaly detection model capable of identifying abnormal operating conditions across the gas supply chain.
-
-3. To assess the potential impact of detected disruptions on downstream facilities and provide operational insights through an interactive monitoring dashboard.
+Upstream and midstream faults travel down the chain and reduce every plant's output; plant faults stay local.
 
 ---
 
-# CHAPTER 2: LITERATURE REVIEW
+## How it works
 
-## 2.1 Introduction
+```
+Hourly sensor data (13 readings per hour)
+   │
+   ├─► 1. Isolation Forest ............ is this hour unusual?           (unsupervised anomaly detection)
+   ├─► 2. 2-hour persistence filter ... did it stay unusual 2+ hours?   (removes one-hour noise spikes)
+   ├─► 3. XGBoost ..................... which disruption is it?         (6 classes: Normal + 5 disruptions)
+   ├─► 4. Impact rules ................ how badly is each plant hit?    (weighted by each plant's gas share)
+   └─► 5. SHAP ........................ which sensors drove the result? (explainable AI)
+                                         │
+                                         ▼
+                              Streamlit dashboard (app.py)
+```
 
-This chapter reviews previous studies related to gas supply chain monitoring, artificial intelligence applications in industrial systems, machine learning-based anomaly detection techniques, and impact assessment approaches. The purpose of this review is to identify existing research gaps and justify the need for the proposed AI-Assisted Gas Supply Chain Impact Monitoring and Analysis System.
-
-The chapter begins by discussing the structure and monitoring requirements of natural gas supply chains, followed by a review of machine learning techniques used for anomaly detection in industrial environments. Subsequently, studies related to disruption classification, decision support systems, and impact assessment methodologies are examined. Finally, research gaps identified from existing literature are presented to establish the motivation for this study.
-
----
-
-## 2.2 Natural Gas Supply Chain Monitoring
-
-*(To be completed during literature review.)*
-
----
-
-## 2.3 Artificial Intelligence in Industrial Monitoring
-
-*(To be completed during literature review.)*
-
----
-
-## 2.4 Machine Learning-Based Anomaly Detection
-
-*(To be completed during literature review.)*
+- **Confirmed disruption:** an Isolation Forest anomaly that persists for **2 or more consecutive hours**. Single-hour
+  spikes are filtered out as noise.
+- **System severity:** for supply faults, *High* if pipeline supply drops by 75% or more and *Medium* if it drops by 25%
+  or more. For a plant fault, the severity is that plant's own impact level.
+- **Monitoring advisory:** a suggested next step for each severity (for example, "escalate to operations planner").
+  It is advice only.
 
 ---
 
-## 2.5 Isolation Forest for Anomaly Detection
+## Dataset
 
-*(To be completed during literature review.)*
-
----
-
-## 2.6 XGBoost for Event Classification
-
-*(To be completed during literature review.)*
-
----
-
-## 2.7 Impact Assessment and Decision Support Systems
-
-*(To be completed during literature review.)*
+| Item | Value |
+|---|---|
+| Source | Synthetic, generated by `dataset/realistic_dataset.py` (fixed seed, reproducible) |
+| Period | 1 Jan 2025 to 31 Dec 2025, one row per hour (8,760 rows) |
+| Disruptions | 18 events per type (90 events, 5 to 7 hours each, at least 20 hours apart) |
+| Abnormal hours | 552 of 8,760 (6.3%) |
+| Realism | Sensor noise, gradual ramp-in and recovery hours, and 20 harmless one-hour dips that are labelled Normal |
+| Train / test split | Time-ordered 70 / 30: training up to 13 Sep 2025, testing on the last 2,628 hours (13 Sep to 31 Dec 2025) |
 
 ---
 
-## 2.8 Research Gap
+## Results (test period, 2,628 hours)
 
-*(To be completed during literature review.)*
+**Anomaly detection (Isolation Forest)**
 
----
+| | Precision | Recall | F1 | ROC-AUC | False-positive hours | Events detected |
+|---|---|---|---|---|---|---|
+| Raw | 0.764 | 0.909 | 0.830 | 0.997 | 34 | 20 / 20 |
+| **+ 2-hour persistence filter** | **0.974** | **0.909** | **0.940** | 0.997 | **3** | **20 / 20** |
 
-# CHAPTER 3: METHODOLOGY
+The 2-hour filter cuts false positives from 34 to 3 without missing a single disruption event. Isolation Forest also
+clearly beats the two baselines tested (Local Outlier Factor and an MLP autoencoder).
 
-## 3.1 Research Methodology
+**Disruption classification (6 classes)**
 
-This research adopts a quantitative and system development methodology to design and develop an AI-assisted monitoring framework for gas supply chain operations. The proposed framework consists of several modules including dataset development, anomaly detection, disruption classification, impact assessment, and interactive visualization.
+| Model | Accuracy | Macro F1 | Inference time |
+|---|---|---|---|
+| **XGBoost (used)** | 0.9985 | 0.975 | 6 ms |
+| Random Forest | 0.9992 | 0.979 | 31 ms |
+| SVM (RBF) | 0.9989 | 0.971 | 27 ms |
 
-The overall research process consists of the following phases:
+XGBoost is 4 to 5 times faster than the baselines with near-identical accuracy, and it works directly with SHAP's
+fast tree explainer. SHAP confirms that each disruption is recognised from the sensors at the right stage of the chain,
+for example upstream pressure and flow for Low Pressure, and compressor load and pipeline flow for Compressor Trip.
 
-1. Literature review and problem identification.
-2. Dataset development and integration.
-3. Data preprocessing and preparation.
-4. Development of AI-based anomaly detection model.
-5. Development of disruption classification model.
-6. Development of impact assessment module.
-7. Development of interactive dashboard.
-8. System evaluation and validation.
-
----
-
-## 3.2 Data Collection
-
-Due to confidentiality restrictions and limited accessibility to industrial operational data, this study utilizes synthetic datasets generated based on realistic operational behaviour and industrial operational characteristics obtained from literature and publicly available references.
-
-The developed datasets represent operational conditions across upstream, midstream, and downstream facilities within the gas supply chain. Both normal and abnormal operating conditions are simulated to facilitate the development and evaluation of the proposed monitoring framework.
+**Impact rules:** moving every severity cut-off by ±15% changes the severity of 39 (−15%) or 13 (+15%) of the 126
+anomalous test hours, so the ratings are reasonably stable.
 
 ---
 
-## 3.3 Tools, Software and Platforms
+## Dashboard
 
-| Component | Tool / Platform |
-|------------|----------------|
-| Programming Language | Python |
-| Data Manipulation | Pandas, NumPy |
-| Machine Learning | Scikit-learn |
-| Anomaly Detection | Isolation Forest |
-| Classification Model | XGBoost |
-| Data Visualization | Matplotlib, Plotly |
-| Dashboard Development | Streamlit |
-| Development Environment | Visual Studio Code |
-| Documentation | Microsoft Word |
+Run `streamlit run app.py` and use the sidebar to move between pages:
+
+| Page | What it shows |
+|---|---|
+| **Supply Chain Overview** | Summary cards and hourly telemetry for upstream, midstream and downstream. Red dots mark confirmed disruptions at that stage; orange rings show the knock-on effect of a disruption further up the chain. |
+| **Event Inspector** | Pick a confirmed disruption hour to see the 5-stage chain, the AI diagnosis with its SHAP explanation, the impact on each plant and the monitoring advisory. |
+| **Disruption Logs** | Every confirmed disruption event, with an hourly breakdown, CSV downloads and a check of how stable the severity rules are. |
+| **Upload & Score** | Upload a new hourly CSV in the same format as the master dataset. It is scored by the trained models (no retraining) and can then be explored in the three pages above. |
+| **Model Performance** | Detection and classification results, confusion matrix, per-class scores and global SHAP feature importance. |
 
 ---
 
-## 3.4 Software Development Life Cycle (SDLC)
+## Getting started
 
-This research adopts the Agile Software Development Life Cycle (Agile SDLC) due to its iterative and incremental development approach.
+Requires **Python 3.14** (the versions in `requirements.txt` were tested with it).
 
-### Phase 1: Requirement Analysis
+```bash
+# 1. Create and activate a virtual environment
+python -m venv .venv
+.venv\Scripts\activate            # Windows
+# source .venv/bin/activate       # macOS / Linux
 
-- Identify research problems.
-- Define project scope and objectives.
-- Identify system requirements.
+# 2. Install the packages
+pip install -r requirements.txt
 
-### Phase 2: System Design
+# 3. Start the dashboard (from the project root)
+streamlit run app.py
+```
 
-- Design overall system architecture.
-- Design dataset structure.
-- Design machine learning framework.
+The trained models and results are already included in `Models/result/`, so the dashboard runs straight away.
 
-### Phase 3: System Development
+**To rebuild everything from scratch** (new data, retrained models, new results):
 
-- Develop synthetic datasets.
-- Develop anomaly detection model.
-- Develop disruption classification model.
-- Develop impact assessment module.
-- Develop dashboard interface.
+```bash
+cd dataset
+python realistic_dataset.py     # 1. generate the 5 stage datasets
+python Merge.py                 # 2. merge them into master_gas_supply_chain_dataset.csv
+cd ..
+python Models/Train_Anomaly.py      # 3. train Isolation Forest + baselines
+python Models/Train_Classifier.py   # 4. train XGBoost + baselines
+python Models/ImpactAssessment.py   # 5. impact assessment + SHAP, writes the dashboard files
+```
 
-### Phase 4: Testing and Validation
+`Merge.py` must be run from inside `dataset/`, because it reads and writes files in the current folder.
 
-- Evaluate anomaly detection performance.
-- Evaluate classification performance.
-- Validate impact assessment results.
-
-### Phase 5: Documentation
-
-- Prepare technical documentation.
-- Prepare final report and presentation.
-
----
-
-# CHAPTER 4: GANTT CHART
-
-## 4.1 Gantt Chart for FYP I
-
-| No | Activities | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 |
-|----|------------|---|---|---|---|---|---|---|---|---|----|----|----|----|----|
-| 1 | Project Title Confirmation and Form 1A Submission | █ | █ | █ | | | | | | | | | | | |
-| 2 | Preliminary Research Work (Literature Review) | | | | █ | █ | █ | █ | | | | | | | |
-| 3 | Identify Methodology and Tools | | █ | █ | █ | █ | █ | █ | | | | | | | |
-| 4 | Dataset Design and System Architecture | | | █ | █ | █ | █ | █ | | | | | | | |
-| 5 | Proposal Defence Preparation | | | | | | █ | █ | █ | | | | | | |
-| 6 | Proposal Defence | | | | | | | | █ | | | | | | |
-| 7 | FYP I Interim Report Preparation | | | | | | █ | █ | █ | █ | █ | █ | | | |
-| 8 | Preliminary System Development | | | | | | | | █ | █ | █ | █ | | | |
-| 9 | Review with Supervisor | | | | | | | | | | | | █ | | |
-| 10 | Submission of FYP I Interim Report Draft | | | | | | | | | | █ | | | | |
-| 11 | Submission of FYP I Interim Report | | | | | | | | | | | █ | | | |
+`Models/Visualization.ipynb` contains extra charts for analysing detection results.
 
 ---
 
-## 4.2 Gantt Chart for FYP II
+## Project structure
 
-| No | Activities | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 |
-|----|------------|---|---|---|---|---|---|---|---|---|----|----|----|----|----|
-| 1 | Dataset Enhancement and Preprocessing | █ | █ | █ | | | | | | | | | | | |
-| 2 | Develop Anomaly Detection Module | | █ | █ | █ | | | | | | | | | | |
-| 3 | Develop Disruption Classification Module | | | █ | █ | █ | | | | | | | | | |
-| 4 | Develop Impact Assessment Module | | | | █ | █ | █ | | | | | | | | |
-| 5 | Develop Interactive Dashboard | | | | | █ | █ | █ | | | | | | | |
-| 6 | System Integration | | | | | █ | █ | █ | █ | | | | | | |
-| 7 | System Testing and Validation | | | | | | | █ | █ | | | | | | |
-| 8 | Debugging and Optimization | | | | | | | | █ | █ | | | | | |
-| 9 | Review with Supervisor | █ | █ | █ | █ | █ | █ | █ | █ | █ | █ | █ | █ | █ | █ |
-| 10 | Final Report Preparation | | | | | | | █ | █ | █ | █ | | | | |
-| 11 | Submission of Dissertation Draft Report | | | | | | | | | █ | | | | | |
-| 12 | Viva Preparation | | | | | | | █ | █ | █ | █ | | | | |
-| 13 | Viva | | | | | | | | | | | █ | | | |
-| 14 | Final Dissertation Submission | | | | | | | | | | | | | | █ |
+```
+├── app.py                          Streamlit dashboard
+├── requirements.txt                Python packages
+├── .streamlit/config.toml          Dashboard theme and font
+├── Picture/                        Logos (sidebar logo, browser-tab icon, README logo)
+├── dataset/
+│   ├── realistic_dataset.py        Generates the official dataset (noise, ramps, transients)
+│   ├── Dataset.py                  Earlier, noise-free version of the generator
+│   ├── Merge.py                    Merges the 5 stage files into the master dataset and adds labels
+│   ├── *_dataset.csv, downstream_*.csv, master_gas_supply_chain_dataset.csv
+│   └── 1st_dataset/                Backup of the first dataset version
+└── Models/
+    ├── Train_Anomaly.py            Isolation Forest (+ LOF, autoencoder baselines) and the 2-hour filter
+    ├── Train_Classifier.py         XGBoost (+ Random Forest, SVM baselines) and a stress test
+    ├── ImpactAssessment.py         Impact scores, severity, advisory, SHAP, sensitivity check
+    ├── impact_rules.py             Impact and severity rules (shared by the scripts and the dashboard)
+    ├── scoring.py                  Scores new data with the trained models (used by Upload & Score)
+    ├── Visualization.ipynb         Detection analysis charts
+    └── result/                     Trained models (.pkl) and result files read by the dashboard
+```
 
 ---
 
-# CHAPTER 5: CONCLUSION AND RECOMMENDATION
+## Limitations and future work
 
-This research proposes an AI-Assisted Gas Supply Chain Impact Monitoring and Analysis System to improve operational awareness across the gas supply chain. The proposed framework integrates artificial intelligence techniques with gas supply chain monitoring to enable anomaly detection, disruption analysis, and downstream impact assessment.
+- **Synthetic data:** the models learned "normal" from simulated values. Data from a real plant with different normal
+  operating levels would need the models to be retrained (and the impact rules' baselines updated) first.
+- **Historical analysis only:** the dashboard analyses past data. Real-time streaming and alerting are future work.
+- **The 2-hour filter adds a 1-hour delay** before a disruption is confirmed, and a noise spike directly next to a
+  real event can be counted as part of that event.
+- **Future work:** integration of real industrial operational data, real-time data streaming, and more advanced
+  impact-propagation models.
 
-The implementation of the proposed framework is expected to improve early disruption detection capabilities, enhance operational visibility, and support decision-making processes during abnormal operating situations.
+---
 
-Future enhancements may include the integration of real industrial operational data, implementation of real-time data streaming capabilities, and incorporation of advanced impact propagation models for improved decision support.
+*Final Year Project by Syed Muhammad Arif.*
