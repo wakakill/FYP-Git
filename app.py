@@ -621,7 +621,7 @@ def page_performance():
         importance = load_result_csv("shap_global_importance.csv")
         class_choice = st.selectbox("Class", ["Mean_Abs_SHAP_All_Classes"] + CLASSES,
                                     format_func=lambda c: "All classes (mean)" if c.startswith("Mean_")
-                                    else DISRUPTION_LABELS.get(c, c))
+                                    else DISRUPTION_LABELS.get(c, c), filter_mode=None)  # select only, no typing
         ranked = importance.sort_values(class_choice)
         fig = go.Figure(go.Bar(x=ranked[class_choice], y=ranked["Feature"].str.replace("_", " "), orientation="h",
                                marker_color=PRIMARY_LINE, hovertemplate="%{y}: %{x:.3f}<extra></extra>"))
