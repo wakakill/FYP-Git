@@ -1,29 +1,27 @@
-# Slide 18 light-slate theme for app.py
+# Calm light-slate theme for app.py
 [theme]
 base = "light"
-primaryColor = "#1E3A5F"
-backgroundColor = "#F8FAFC"
+primaryColor = "#3A6EA5"
+backgroundColor = "#F5F7FA"
 secondaryBackgroundColor = "#FFFFFF"
 textColor = "#1E293B"
-borderColor = "#E2E8F0"
-baseRadius = "10px"
+borderColor = "#E3E8EF"
+baseRadius = "12px"
 showSidebarBorder = true
 dataframeHeaderBackgroundColor = "#F1F5F9"
-redColor = "#EF4444"
-orangeColor = "#F97316"
-yellowColor = "#F59E0B"
-greenColor = "#10B981"
-blueColor = "#2563EB"
+# Inter from Google Fonts (falls back to the default sans-serif font when offline)
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+redColor = "#E05A5A"
+orangeColor = "#E8894A"
+yellowColor = "#E0B04A"
+greenColor = "#3FA27F"
+blueColor = "#3A6EA5"
 grayColor = "#94A3B8"
 
 [theme.sidebar]
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F8FAFC"
+secondaryBackgroundColor = "#F5F7FA"
 
 [browser]
 # Offline tool: do not send usage statistics
 gatherUsageStats = false
-
-[client]
-# Hide developer menu items for a cleaner page
-toolbarMode = "minimal"
