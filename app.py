@@ -8,6 +8,7 @@ Requires the result files produced by Models/Train_Anomaly.py -> Train_Classifie
 
 import base64
 import html
+import io
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import shap
 import streamlit as st
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 
@@ -25,6 +27,7 @@ PICTURE_DIR = BASE_DIR / "Picture"
 sys.path.insert(0, str(MODELS_DIR))
 
 from impact_rules import CONFIRMED_COL, PLANTS, LEVEL_ORDER, dependency_weights  # noqa: E402
+from scoring import FEATURES as MODEL_FEATURES, validate, score, shap_matrix  # noqa: E402
 
 # Browser-tab icon: the AEGIS shield mark
 st.set_page_config(page_title="AEGIS - Gas Supply Chain Monitoring", page_icon=str(PICTURE_DIR / "aegis-mark.png"),
@@ -86,6 +89,7 @@ PAGES = {
     "Supply Chain Overview": ":material/dashboard:",
     "Event Inspector": ":material/search:",
     "Disruption Logs": ":material/list_alt:",
+    "Upload & Score": ":material/upload_file:",
     "Model Performance": ":material/insights:",
 }
 
@@ -192,6 +196,66 @@ if len(df) != shap_artifacts["shap_values"].shape[0]:
     st.stop()
 
 PERIOD = f"{df['Timestamp'].min():%d %b %Y} to {df['Timestamp'].max():%d %b %Y}"
+
+
+# =========================
+# Uploaded dataset (Upload & Score page)
+# =========================
+
+MODEL_FILES = ["scaler.pkl", "isolation_forest_model.pkl", "xgboost_anomaly_classifier.pkl",
+               "xgboost_label_encoder.pkl"]
+
+
+@st.cache_resource
+def load_models():
+    """Trained models, loaded only when a dataset is uploaded."""
+    scaler, iso_forest, xgb_model, label_encoder = (joblib.load(RESULT_DIR / f) for f in MODEL_FILES)
+    return dict(scaler=scaler, iso_forest=iso_forest, xgb_model=xgb_model, label_encoder=label_encoder,
+                explainer=shap.TreeExplainer(xgb_model))
+
+
+@st.cache_data(show_spinner=False)
+def score_bytes(data):
+    """Read, validate and score uploaded CSV bytes. Returns (scored DataFrame or None, errors, warnings)."""
+    try:
+        raw = pd.read_csv(io.BytesIO(data))
+    except (pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError) as exc:
+        return None, [f"The file could not be read as a CSV: {exc}"], []
+    clean, errors, warnings = validate(raw)
+    if errors:
+        return None, errors, warnings
+    return score(clean, **load_models()), [], warnings
+
+
+def on_upload():
+    """File-uploader callback: score the new file and, if it is valid, show it in Overview, Event Inspector and Disruption Logs.
+    The result lives in session_state, so it survives page changes (the uploader widget itself does not)."""
+    file = st.session_state.get("upload_csv")
+    if file is None:  # file removed from the uploader: keep the dataset already loaded
+        return
+    scored, errors, warnings = score_bytes(file.getvalue())
+    st.session_state["upload_errors"] = (file.name, errors)
+    if errors:
+        return
+    start, end = scored["Timestamp"].min(), scored["Timestamp"].max()
+    st.session_state["upload"] = dict(name=file.name, df=scored, hours=confirmed_hours(scored), warnings=warnings,
+                                      period=f"{start:%d %b %Y} to {end:%d %b %Y}")
+    st.session_state["data_source"] = "uploaded"
+
+
+def clear_upload():
+    for key in ("upload", "upload_errors"):
+        st.session_state.pop(key, None)
+    st.session_state["data_source"] = "original"
+
+
+# Dataset shown in Overview, Event Inspector and Disruption Logs: original test period, or the uploaded file
+upload = st.session_state.get("upload")
+USE_UPLOAD = upload is not None and st.session_state.get("data_source") == "uploaded"
+if USE_UPLOAD:
+    view_df, view_hours, view_period = upload["df"], upload["hours"], upload["period"]
+else:
+    view_df, view_hours, view_period = df, hours, PERIOD
 
 
 # =========================
@@ -373,8 +437,22 @@ with st.sidebar:
         st.button(name, icon=icon, key=f"nav_{name}", width="stretch", on_click=go_to, args=(name,),
                   type="primary" if st.session_state["page"] == name else "secondary")
     st.divider()
-    st.caption(f"Offline analysis of the model test period: {PERIOD} (synthetic dataset).")
+    if upload is not None:
+        st.selectbox("Data shown in Overview, Inspector & Logs", ["uploaded", "original"], key="data_source",
+                     format_func=lambda s: f"Uploaded: {upload['name']}" if s == "uploaded"
+                     else "Original test period", filter_mode=None)
+    if USE_UPLOAD:
+        st.caption(f"Overview, Event Inspector and Disruption Logs show **{upload['name']}** ({view_period}). "
+                   f"Model Performance shows the original test period, {PERIOD}.")
+    else:
+        st.caption(f"Offline analysis of the model test period: {PERIOD} (synthetic dataset).")
     st.caption("Showing confirmed disruptions only: anomalies that persisted for 2 or more consecutive hours.")
+
+
+def upload_banner():
+    if USE_UPLOAD:
+        st.info(f"Showing your uploaded dataset **{upload['name']}**. Switch back to the original test period "
+                "in the sidebar.", icon=":material/upload_file:")
 
 
 # =========================
@@ -382,17 +460,18 @@ with st.sidebar:
 # =========================
 
 def page_overview():
-    page_header("Supply Chain Overview", f"Historical telemetry and confirmed disruptions, {PERIOD}")
+    page_header("Supply Chain Overview", f"Historical telemetry and confirmed disruptions, {view_period}")
+    upload_banner()
 
-    event_severity = hours.groupby("Event")["System_Severity"].agg(lambda s: max(s, key=LEVEL_ORDER.index))
-    n_events = hours["Event"].nunique()
+    event_severity = view_hours.groupby("Event")["System_Severity"].agg(lambda s: max(s, key=LEVEL_ORDER.index))
+    n_events = view_hours["Event"].nunique()
 
     cols = st.columns(4)
-    cols[0].markdown(kpi_card("Total Analyzed Hours", f"{len(df):,}", PERIOD, NAVY), unsafe_allow_html=True)
-    cols[1].markdown(kpi_card("Confirmed Disruption Hours", f"{len(hours):,}",
+    cols[0].markdown(kpi_card("Total Analyzed Hours", f"{len(view_df):,}", view_period, NAVY), unsafe_allow_html=True)
+    cols[1].markdown(kpi_card("Confirmed Disruption Hours", f"{len(view_hours):,}",
                               "persisted for 2+ consecutive hours", CONFIRMED_RED), unsafe_allow_html=True)
     cols[2].markdown(kpi_card("Confirmed Disruption Events", f"{n_events:,}",
-                              f"{len(hours) / max(n_events, 1):.1f} hours per event on average", "#D9773A"),
+                              f"{len(view_hours) / max(n_events, 1):.1f} hours per event on average", "#D9773A"),
                      unsafe_allow_html=True)
     cols[3].markdown(kpi_card("High-Severity Events", f"{(event_severity == 'High').sum():,}",
                               "events reaching High system severity", "#D04848"), unsafe_allow_html=True)
@@ -404,21 +483,21 @@ def page_overview():
         fig = go.Figure()
         colors = [PRIMARY_LINE, "#3FB6A8", "#9B87E8"]
         for i, ((col, label, fault), color) in enumerate(zip(lines, colors)):
-            fig.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=label, mode="lines",
-                                     line=dict(color=color, width=1.2),
+            fig.add_trace(go.Scatter(x=view_df["Timestamp"], y=view_df[col], name=label, mode="lines",
+                                     line=dict(color=color, width=1.2), legendrank=1 + i,  # lines first
                                      hovertemplate="%{x|%d %b %Y %H:%M}<br>%{y:.1f}<extra>" + label + "</extra>"))
-            rows = hours[hours["Event_Type"] == fault]
+            rows = view_hours[view_hours["Event_Type"] == fault]
             fig.add_trace(go.Scatter(x=rows["Timestamp"], y=rows[col], mode="markers", name=CONFIRMED_LABEL,
                                      marker=dict(color=CONFIRMED_RED, size=7), legendgroup="confirmed",
-                                     showlegend=(i == 0),
+                                     showlegend=(i == 0), legendrank=10,
                                      hovertemplate="%{x|%d %b %Y %H:%M}<br>%{y:.1f}<extra>"
                                                    + DISRUPTION_LABELS[fault] + "</extra>"))
             if knock_on:
-                rows = hours[hours["Event_Type"].isin(knock_on)]
+                rows = view_hours[view_hours["Event_Type"].isin(knock_on)]
                 fig.add_trace(go.Scatter(
                     x=rows["Timestamp"], y=rows[col], mode="markers", name="Knock-on from upstream disruption",
                     marker=dict(color="rgba(0,0,0,0)", size=9, line=dict(color="#E8894A", width=2)),
-                    legendgroup="knock_on", showlegend=(i == 0),
+                    legendgroup="knock_on", showlegend=(i == 0), legendrank=11,
                     customdata=rows["Event_Type"].map(DISRUPTION_LABELS),
                     hovertemplate="%{x|%d %b %Y %H:%M}<br>%{y:.1f}<extra>Knock-on from %{customdata}</extra>"))
         fig.update_yaxes(title_text="Flow (MMSCFD)" if len(lines) == 1 else "Plant output")
@@ -445,18 +524,19 @@ def page_inspector():
     page_header("Event Inspector",
                 "Select a confirmed disruption hour to see what the models detected, why, and which facilities "
                 "are affected")
+    upload_banner()
 
-    if hours.empty:
-        st.info("No confirmed disruptions in the test period.")
+    if view_hours.empty:
+        st.info("No confirmed disruptions in this dataset.")
         return
 
     labels = {idx: f"{row.Timestamp:%Y-%m-%d %H:%M}  |  {DISRUPTION_LABELS[row.Disruption]}  |  "
                    f"Severity: {row.System_Severity}"
-              for idx, row in hours.iterrows()}
+              for idx, row in view_hours.iterrows()}
     # Default: the highest-impact Compressor Trip hour, else Low Pressure, else the first listed hour
-    default = hours.index[0]
+    default = view_hours.index[0]
     for fault in ["Compressor_Trip", "Low_Pressure"]:
-        matches = hours[hours["Predicted_Anomaly_Type"] == fault]
+        matches = view_hours[view_hours["Predicted_Anomaly_Type"] == fault]
         if not matches.empty:
             default = matches["Supply_Drop_Percent"].idxmax()
             break
@@ -464,9 +544,13 @@ def page_inspector():
     selected = st.selectbox("Confirmed disruption hour", options, index=options.index(default),
                             format_func=labels.get, filter_mode=None)  # select only, no typing
 
-    record = df.loc[selected]
+    record = view_df.loc[selected]
     pred_idx = CLASSES.index(record["Predicted_Anomaly_Type"])
-    shap_vector = shap_artifacts["shap_values"][selected, :, pred_idx]
+    if USE_UPLOAD:  # uploaded data: explain this one hour on demand
+        shap_vector = shap_matrix(load_models()["explainer"], view_df.loc[[selected], FEATURES],
+                                  len(CLASSES))[0, :, pred_idx]
+    else:
+        shap_vector = shap_artifacts["shap_values"][selected, :, pred_idx]
 
     render_chain(record)
     left, right = st.columns([1.15, 1])
@@ -477,17 +561,12 @@ def page_inspector():
 
 
 # =========================
-# Page 3: Disruption Logs
+# Page 3: Upload & Score
 # =========================
 
-def page_logs():
-    page_header("Disruption Logs", f"Every confirmed disruption in the test period, {PERIOD}")
-
-    if hours.empty:
-        st.info("No confirmed disruptions in the test period.")
-        return
-
-    summary = hours.groupby("Event").agg(
+def event_summary(event_hours):
+    """One row per confirmed disruption event (from confirmed_hours())."""
+    summary = event_hours.groupby("Event").agg(
         Start=("Timestamp", "min"), End=("Timestamp", "max"), Hours=("Timestamp", "size"),
         Disruption=("Event_Type", "first"),
         Max_Confidence=("Prediction_Confidence", "max"),
@@ -496,16 +575,155 @@ def page_logs():
     ).reset_index(drop=True)
     summary["Disruption"] = summary["Disruption"].map(DISRUPTION_LABELS)
     summary["Affected_Facilities"] = summary["Affected_Facilities"].str.replace("_", " ")
+    return summary
+
+
+# Required columns: (unit, description); "typical" values come from the normal hours of the original test period
+FORMAT_SPEC = {
+    "Timestamp": ("date-time", "Hour of the reading, e.g. 2025-01-01 00:00:00"),
+    "Upstream_Flow": ("MMSCFD", "Gas flow leaving the upstream field"),
+    "Upstream_Pressure": ("bar", "Upstream gas pressure"),
+    "Midstream_Pipeline_Flow": ("MMSCFD", "Gas flow in the transmission pipeline"),
+    "Midstream_Compressor_Load": ("%", "Compressor station load"),
+    **{f"{p}_Gas_Supply_Received": ("MMSCFD", f"Gas delivered to the {PLANT_LABELS[p]} plant") for p in PLANTS},
+    **{f"{p}_Plant_Efficiency": ("%", f"{PLANT_LABELS[p]} plant efficiency") for p in PLANTS},
+    **{f"{p}_Plant_Output": ("supply × efficiency", f"{PLANT_LABELS[p]} plant output") for p in PLANTS},
+}
+FORMAT_ORDER = ["Timestamp"] + MODEL_FEATURES
+
+
+def page_upload():
+    page_header("Upload & Score", "Run a new hourly dataset through the trained models, then explore it in "
+                                  "Supply Chain Overview, Event Inspector and Disruption Logs")
+
+    missing_models = [f for f in MODEL_FILES if not (RESULT_DIR / f).exists()]
+    if missing_models:
+        st.error(f"Missing trained model files in {RESULT_DIR}: {', '.join(missing_models)}. "
+                 "Run Models/Train_Anomaly.py and Models/Train_Classifier.py first.")
+        return
+
+    with st.expander("**1. File format**: required columns and rules", icon=":material/description:",
+                     expanded=False):
+        st.markdown("Upload a **CSV file with one row per hour** and the **14 columns below**, using exactly "
+                    "these column names. This is the same layout as the project's master dataset "
+                    "(`master_gas_supply_chain_dataset.csv`), so that file can be uploaded as it is.")
+        normal = df[df["System_Status"] == "Normal"]
+        spec = pd.DataFrame([{
+            "Column": col, "Unit": FORMAT_SPEC[col][0], "Description": FORMAT_SPEC[col][1],
+            "Typical normal value": "—" if col == "Timestamp" else f"{normal[col].median():.1f}",
+        } for col in FORMAT_ORDER])
+        st.dataframe(spec, hide_index=True, width="stretch", height=(len(spec) + 1) * 35 + 3)  # all rows
+        st.markdown(
+            "- **Order of rows and columns does not matter.** Rows are sorted by time; extra columns are ignored.\n"
+            "- **Each hour must appear once.** Duplicate or sub-hourly timestamps are rejected. Missing hours "
+            "are allowed, but disruptions are never joined across a gap.\n"
+            "- **Label columns are optional.** If the file also has `System_Status` (the true condition of each "
+            "hour), the page also checks the models' predictions against it.\n"
+            "- **Use data with similar normal levels.** The models learned normal operation from this "
+            "project's synthetic dataset (see *Typical normal value*). Data from a plant that normally runs at "
+            "different levels will give unreliable results.")
+        template = df[FORMAT_ORDER].head(24).copy()
+        template["Timestamp"] = template["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+        st.download_button("Download example file (24 hours, CSV)", template.to_csv(index=False).encode("utf-8"),
+                           file_name="aegis_upload_example.csv", mime="text/csv", icon=":material/download:")
 
     with st.container(border=True):
-        st.markdown(f"#### {len(summary)} confirmed disruption events ({len(hours)} hours)")
+        st.markdown("#### 2. Upload your dataset")
+        st.file_uploader("Upload dataset (CSV)", type=["csv"], key="upload_csv", on_change=on_upload,
+                         help="The file is scored as soon as it is uploaded (a full year takes a few seconds).")
+        failed = st.session_state.get("upload_errors")
+        if failed and failed[1]:
+            st.error(f"**{failed[0]} cannot be scored:**\n\n" + "\n".join(f"- {e}" for e in failed[1]))
+        if upload is None:
+            st.caption("After a successful upload, the results appear below and in Supply Chain Overview, "
+                       "Event Inspector and Disruption Logs. Your file is only used in this browser session.")
+            return
+        c1, c2 = st.columns([3, 1])
+        c1.success(f"Loaded **{upload['name']}**: {len(upload['df']):,} hours, {upload['period']}.")
+        c2.button("Remove uploaded dataset", icon=":material/delete:", on_click=clear_upload, width="stretch")
+        st.caption("Explore it in **Supply Chain Overview**, **Event Inspector** and **Disruption Logs**. Use the selector in the "
+                   "sidebar to switch between your file and the original test period.")
+
+    scored, up_hours = upload["df"], upload["hours"]
+    for w in upload["warnings"]:
+        st.warning(w)
+    # Data unlike the training data gets flagged far more often than the training rate
+    flag_rate = scored["Predicted_Anomaly"].mean()
+    train_rate = float(load_models()["iso_forest"].contamination)
+    if flag_rate > 3 * train_rate:
+        st.warning(f"The Isolation Forest flagged {flag_rate:.0%} of hours as unusual, versus about "
+                   f"{train_rate:.0%} in the training data. This data may differ from what the models were "
+                   "trained on, so treat the results with caution.")
+
+    summary = event_summary(up_hours) if len(up_hours) else pd.DataFrame()
+    n_high = int((summary["System_Severity"] == "High").sum()) if len(summary) else 0
+    cols = st.columns(4)
+    cols[0].markdown(kpi_card("Hours Scored", f"{len(scored):,}", upload["period"], NAVY), unsafe_allow_html=True)
+    cols[1].markdown(kpi_card("Confirmed Disruption Hours", f"{len(up_hours):,}",
+                              f"{int(scored['Predicted_Anomaly'].sum() - len(up_hours))} single-hour flags "
+                              "filtered out", CONFIRMED_RED), unsafe_allow_html=True)
+    cols[2].markdown(kpi_card("Confirmed Disruption Events", f"{len(summary):,}",
+                              "back-to-back confirmed hours = 1 event", "#D9773A"), unsafe_allow_html=True)
+    cols[3].markdown(kpi_card("High-Severity Events", f"{n_high:,}", "events reaching High system severity",
+                              "#D04848"), unsafe_allow_html=True)
+    st.write("")
+
+    if "System_Status" in scored.columns:
+        with st.container(border=True):
+            st.markdown("#### Check against the labels in your file")
+            actual = scored["System_Status"].astype(str)
+            disrupted = actual != "Normal"
+            confirmed = scored[CONFIRMED_COL] == 1
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Disruption hours caught (recall)",
+                      f"{(confirmed & disrupted).sum() / max(disrupted.sum(), 1):.1%}",
+                      help="Share of the truly disrupted hours that were confirmed (≥2h).")
+            c2.metric("Normal hours wrongly confirmed", f"{int((confirmed & ~disrupted).sum())}",
+                      help="Hours labelled Normal in your file that were confirmed as a disruption.")
+            c3.metric("Disruption type accuracy", f"{(scored['Predicted_Anomaly_Type'] == actual).mean():.1%}",
+                      help="Share of all hours where XGBoost's predicted type matches System_Status.")
+
+    with st.container(border=True):
+        if summary.empty:
+            st.markdown("#### No confirmed disruptions")
+            st.info("No unusual readings lasted 2 or more consecutive hours in this file.")
+        else:
+            st.markdown(f"#### {len(summary)} confirmed disruption events ({len(up_hours)} hours)")
+            st.dataframe(
+                summary.style.map(color_severity, subset=["System_Severity"])
+                .format({"Max_Confidence": "{:.1%}", "Start": "{:%Y-%m-%d %H:%M}", "End": "{:%Y-%m-%d %H:%M}"}),
+                hide_index=True, width="stretch")
+        out = scored.copy()
+        out["Timestamp"] = out["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+        st.download_button("Download all scored hours (CSV)", out.to_csv(index=False).encode("utf-8"),
+                           file_name=f"scored_{Path(upload['name']).stem}.csv", mime="text/csv",
+                           icon=":material/download:")
+
+
+# =========================
+# Page 4: Disruption Logs
+# =========================
+
+def page_logs():
+    page_header("Disruption Logs", f"Every confirmed disruption, {view_period}")
+    upload_banner()
+
+    if view_hours.empty:
+        st.info("No confirmed disruptions in this dataset.")
+        return
+
+    summary = event_summary(view_hours)
+
+    with st.container(border=True):
+        st.markdown(f"#### {len(summary)} confirmed disruption events ({len(view_hours)} hours)")
         st.dataframe(
             summary.style.map(color_severity, subset=["System_Severity"])
             .format({"Max_Confidence": "{:.1%}", "Start": "{:%Y-%m-%d %H:%M}", "End": "{:%Y-%m-%d %H:%M}"}),
             hide_index=True, width="stretch")
 
-        hourly = hours[["Timestamp", "Disruption", "Anomaly_Score", "Prediction_Confidence", "System_Severity",
-                        "Affected_Facilities", "Recommendation", "SHAP_Top_Contributors", "System_Status"]].rename(
+        hourly_cols = ["Timestamp", "Disruption", "Anomaly_Score", "Prediction_Confidence", "System_Severity",
+                       "Affected_Facilities", "Recommendation", "SHAP_Top_Contributors"]
+        hourly = view_hours[hourly_cols + (["System_Status"] if "System_Status" in view_hours else [])].rename(
             columns={"Disruption": "Predicted_Disruption", "Recommendation": "Monitoring_Advisory",
                      "System_Status": "Recorded_Status"})
         hourly["Predicted_Disruption"] = hourly["Predicted_Disruption"].map(DISRUPTION_LABELS)
@@ -535,12 +753,14 @@ def page_logs():
         robustness = sens[level_cols + ["System_Severity_Changed"]].rename(
             columns=lambda c: c.replace("_Records", "").replace("System_Severity_Changed", "Tier changed"))
         st.dataframe(robustness, width="stretch")
-        st.caption(f"Computed over the {total} test hours that the Isolation Forest confirmed (≥2h) or XGBoost "
-                   "classified as a disruption, a slightly wider set than the confirmed events above.")
+        st.caption(f"Computed over the {total} hours of the original test period ({PERIOD}) that the Isolation "
+                   "Forest confirmed (≥2h) or XGBoost classified as a disruption, a slightly wider set than its "
+                   "confirmed events. It describes the severity rules themselves, so it does not change with an "
+                   "uploaded dataset.")
 
 
 # =========================
-# Page 4: Model Performance
+# Page 5: Model Performance
 # =========================
 
 def page_performance():
@@ -680,5 +900,6 @@ def page_performance():
     "Supply Chain Overview": page_overview,
     "Event Inspector": page_inspector,
     "Disruption Logs": page_logs,
+    "Upload & Score": page_upload,
     "Model Performance": page_performance,
 }[st.session_state["page"]]()

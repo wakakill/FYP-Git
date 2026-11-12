@@ -167,25 +167,8 @@ predictions = {
 # 6b. 2-Hour Alarm Persistence Rule
 # =========================
 
-PERSISTENCE_HOURS = 2
-
-
-def apply_persistence(y_pred, min_hours=PERSISTENCE_HOURS):
-    """Keep only flags that belong to a run of >= min_hours consecutive flagged hours.
-    In live monitoring the alarm is raised at the 2nd consecutive hour (1-hour confirmation delay);
-    once confirmed, the first hour is marked as part of the same alarm."""
-    y_pred = np.asarray(y_pred)
-    edges = np.flatnonzero(np.diff(np.r_[0, y_pred, 0]))
-    filtered = np.zeros_like(y_pred)
-    for start, end in zip(edges[::2], edges[1::2]):
-        if end - start >= min_hours:
-            filtered[start:end] = 1
-    return filtered
-
-
-# Self-check: single-hour flags are removed, runs of 2+ hours are kept
-assert (apply_persistence(np.array([1, 0, 1, 1, 0, 1, 1, 1, 0, 1]))
-        == np.array([0, 0, 1, 1, 0, 1, 1, 1, 0, 0])).all()
+# Rule lives in scoring.py (shared with the dashboard's Upload & Score page); it self-checks on import
+from scoring import apply_persistence  # noqa: E402
 
 for name in list(predictions):
     y_pred, scores, inference_ms = predictions[name]
