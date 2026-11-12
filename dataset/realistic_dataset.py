@@ -203,16 +203,16 @@ print(f"\nNormal transients: {len(pressure_transients)} pressure dips, {len(effi
 # 8. Re-Run Pipeline
 # =========================
 
-for script, cwd in [(BASE_DIR / "Merge.py", BASE_DIR),
-                    (MODELS_DIR / "Train_Anomaly.py", MODELS_DIR),
-                    (MODELS_DIR / "Train_Classifier.py", MODELS_DIR)]:
-    print(f"\n>>> Running {script.name} ...")
-    # Output captured so only the comparison tables are shown; a failing step prints its error and stops
-    result = subprocess.run([sys.executable, str(script)], cwd=cwd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(result.stdout[-3000:], result.stderr[-3000:])
-        raise SystemExit(f"{script.name} failed")
+# for script, cwd in [(BASE_DIR / "Merge.py", BASE_DIR),
+#                     (MODELS_DIR / "Train_Anomaly.py", MODELS_DIR),
+#                     (MODELS_DIR / "Train_Classifier.py", MODELS_DIR)]:
+#     print(f"\n>>> Running {script.name} ...")
+#     # Output captured so only the comparison tables are shown; a failing step prints its error and stops
+#     result = subprocess.run([sys.executable, str(script)], cwd=cwd, capture_output=True, text=True)
+#     if result.returncode != 0:
+#         print(result.stdout[-3000:], result.stderr[-3000:])
+#         raise SystemExit(f"{script.name} failed")
 
-for name in ["anomaly_detection_comparison.csv", "classification_comparison.csv"]:
-    print(f"\n===== {name} =====")
-    print(pd.read_csv(MODELS_DIR / "result" / name).to_string(index=False))
+# for name in ["anomaly_detection_comparison.csv", "classification_comparison.csv"]:
+#     print(f"\n===== {name} =====")
+#     print(pd.read_csv(MODELS_DIR / "result" / name).to_string(index=False))

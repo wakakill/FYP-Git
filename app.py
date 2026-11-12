@@ -398,8 +398,9 @@ def page_overview():
                               "events reaching High system severity", "#D04848"), unsafe_allow_html=True)
     st.write("")
 
-    def telemetry_chart(lines):
-        """Each line gets red markers only for confirmed disruptions of its own stage/plant."""
+    def telemetry_chart(lines, knock_on=()):
+        """Red dots: confirmed disruptions of this stage/plant itself.
+        Orange rings: knock-on effect here of a confirmed disruption further up the chain (`knock_on` types)."""
         fig = go.Figure()
         colors = [PRIMARY_LINE, "#3FB6A8", "#9B87E8"]
         for i, ((col, label, fault), color) in enumerate(zip(lines, colors)):
@@ -412,6 +413,14 @@ def page_overview():
                                      showlegend=(i == 0),
                                      hovertemplate="%{x|%d %b %Y %H:%M}<br>%{y:.1f}<extra>"
                                                    + DISRUPTION_LABELS[fault] + "</extra>"))
+            if knock_on:
+                rows = hours[hours["Event_Type"].isin(knock_on)]
+                fig.add_trace(go.Scatter(
+                    x=rows["Timestamp"], y=rows[col], mode="markers", name="Knock-on from upstream disruption",
+                    marker=dict(color="rgba(0,0,0,0)", size=9, line=dict(color="#E8894A", width=2)),
+                    legendgroup="knock_on", showlegend=(i == 0),
+                    customdata=rows["Event_Type"].map(DISRUPTION_LABELS),
+                    hovertemplate="%{x|%d %b %Y %H:%M}<br>%{y:.1f}<extra>Knock-on from %{customdata}</extra>"))
         fig.update_yaxes(title_text="Flow (MMSCFD)" if len(lines) == 1 else "Plant output")
         st.plotly_chart(style_fig(fig, height=400), width="stretch")
 
@@ -421,10 +430,11 @@ def page_overview():
         with up:
             telemetry_chart([("Upstream_Flow", "Upstream Flow (MMSCFD)", "Low_Pressure")])
         with mid:
-            telemetry_chart([("Midstream_Pipeline_Flow", "Pipeline Flow (MMSCFD)", "Compressor_Trip")])
+            telemetry_chart([("Midstream_Pipeline_Flow", "Pipeline Flow (MMSCFD)", "Compressor_Trip")],
+                            knock_on=("Low_Pressure",))
         with down:
             telemetry_chart([(f"{p}_Plant_Output", f"{PLANT_LABELS[p]} Output", f"{p}_Underperformance")
-                             for p in PLANTS])
+                             for p in PLANTS], knock_on=("Low_Pressure", "Compressor_Trip"))
 
 
 # =========================
