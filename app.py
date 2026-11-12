@@ -572,6 +572,12 @@ def page_performance():
                               margin=dict(t=50, b=10))
             container.plotly_chart(fig, width="stretch")
 
+        st.caption("**How to read:** each pair of bars compares a model before (grey) and after (navy) the 2-hour "
+                   "persistence filter, which ignores unusual readings that last only one hour. "
+                   "**False positives** are normal hours wrongly flagged as disruptions, so *lower is better*. "
+                   "**F1-score** combines catching real disruptions with avoiding false flags (0 to 1), so "
+                   "*higher is better*. Isolation Forest is the model used by this dashboard.")
+
         with st.expander("Full metrics"):
             st.dataframe(
                 anomaly.drop(columns=["Base_Model", "Variant"]).style.format({
@@ -598,6 +604,10 @@ def page_performance():
             fig.update_xaxes(title_text="Predicted", side="bottom", showline=False)
             fig.update_yaxes(title_text="Actual", autorange="reversed", showgrid=False, showline=False)
             st.plotly_chart(style_fig(fig, height=400), width="stretch")
+            st.caption("**How to read:** each row is what actually happened and each column is what XGBoost "
+                       "predicted. Numbers on the **diagonal** (top-left to bottom-right) are correct predictions; "
+                       "any number **off the diagonal** is a mistake, e.g. the row *PCG Under.* / column "
+                       "*Normal* counts PCG faults the model missed.")
         with c2:
             precision, recall, f1, support = precision_recall_fscore_support(
                 df["System_Status"], df["Predicted_Anomaly_Type"], labels=order, zero_division=0)
@@ -625,8 +635,35 @@ def page_performance():
         ranked = importance.sort_values(class_choice)
         fig = go.Figure(go.Bar(x=ranked[class_choice], y=ranked["Feature"].str.replace("_", " "), orientation="h",
                                marker_color=PRIMARY_LINE, hovertemplate="%{y}: %{x:.3f}<extra></extra>"))
-        fig.update_layout(title="Mean |SHAP value|", xaxis_title="Mean |SHAP value|")
+        fig.update_layout(title="Average influence of each sensor on the decision",
+                          xaxis_title="Mean |SHAP value| (longer bar = sensor matters more)")
         st.plotly_chart(style_fig(fig, height=420), width="stretch")
+
+        # Plain-language takeaway for the selected class, generated from the chart values
+        top = ranked.iloc[::-1]
+        names = [f.replace("_", " ") for f in top["Feature"]]
+        values = top[class_choice].to_numpy()
+        key = [n for n, v in zip(names, values) if v >= 0.05 * values[0]][:3]  # sensors that clearly matter
+        negligible = [n for n, v in zip(names, values) if v < 0.05 * values[0]]
+        if class_choice.startswith("Mean_"):
+            focus = "deciding the disruption type, averaged over all six classes"
+        else:
+            focus = f"deciding whether an hour is <b>{DISRUPTION_LABELS.get(class_choice, class_choice)}</b>"
+        listed = ", ".join(f"<b>{n}</b>" for n in key[:-1]) + (" and " if len(key) > 1 else "") + f"<b>{key[-1]}</b>"
+        takeaway = f"When {focus}, XGBoost relies mainly on {listed}."
+        if negligible:
+            takeaway += (f" The {'other ' if len(negligible) > 3 else ''}{len(negligible)} sensor"
+                         f"{'s' if len(negligible) > 1 else ''}"
+                         f"{' (' + ', '.join(negligible) + ')' if len(negligible) <= 3 else ''} "
+                         f"barely affect{'s' if len(negligible) == 1 else ''} this decision.")
+        st.markdown(
+            f'<div class="summary"><b>What this chart shows:</b> SHAP measures how much each sensor reading '
+            f'pushed XGBoost towards or away from its decision, averaged over every hour in the test period. '
+            f'A <b>longer bar</b> means the model leans on that sensor more; a bar near zero means the sensor '
+            f'hardly matters. Use the <b>Class</b> dropdown to see what the model looks at for one disruption type. '
+            f'It shows <i>which</i> sensors matter, not whether their readings were high or low; the Event '
+            f'Inspector shows that for a single hour.<br><br><b>Takeaway:</b> {takeaway}</div>',
+            unsafe_allow_html=True)
 
 
 {
